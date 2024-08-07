@@ -185,13 +185,12 @@ int main(int argc,  char **argv)
   string querypath = argv[2];
 
   clock_t start = clock();
-  double alpha = strtod(argv[3], &endptr);
-  int pass = strtod(argv[4], &endptr);
-  double backward_theta = strtod(argv[5], &endptr);
-  int NUMTHREAD = strtod(argv[6], &endptr);
+  double alpha = 0.5; 
+  int pass = 12; 
+  double backward_theta = strtod(argv[3], &endptr);
+  int NUMTHREAD = strtod(argv[4], &endptr);
 
-  // int nParts = strtod(argv[8], &endptr);
-  string Hierarchy_Structure_string = argv[7];
+  string Hierarchy_Structure_string = "2_4_8"; 
   vector<int> Hierarchy_Structure;
   vector<string> Hierarchy_Structure_token;
   boost::split(Hierarchy_Structure_token, Hierarchy_Structure_string, boost::is_any_of("_"));
@@ -203,7 +202,7 @@ int main(int argc,  char **argv)
   for(auto x : Hierarchy_Structure)
     nParts *= x;
 
-  long long int vertex_number = strtod(argv[8], &endptr);
+  long long int vertex_number = strtod(argv[5], &endptr);
 
   int Graph_Type = 0;
   // long long int total_nnz_number = -1;
@@ -221,7 +220,7 @@ int main(int argc,  char **argv)
 
   fflush(stdout);
 
-  int total_d = atoi(argv[9]) * 2;
+  int total_d = atoi(argv[6]) * 2;
 
   int d = total_d / 2;
 
@@ -235,18 +234,24 @@ int main(int argc,  char **argv)
   
   double Initial_val_percent = 0;
   int erase_way = 0;
-  erase_way = atoi(argv[10]);
-  int Exp_type = strtod(argv[11], &endptr);
+  erase_way = atoi(argv[7]);
+  int Exp_type = 0;
   
-  if(Exp_type == 3) snapshots_number = 5, Initial_val_percent = 0.5;
-  else if(Exp_type == 4) snapshots_number = 10, Initial_val_percent = 0.9;
-  else {
-    cout << "Error\n";
-    return 0;
+  if(erase_way > 0)
+  {
+    Exp_type = strtod(argv[8], &endptr);
+    
+    if(Exp_type == 3) snapshots_number = 5, Initial_val_percent = 0.5;
+    else if(Exp_type == 4) snapshots_number = 10, Initial_val_percent = 0.9;
+    else {
+      cout << "Error\n";
+      return 0;
+    }  
   }
   
   double threshold_percent = 0;
-  if(erase_way != 0 && argc > 12) threshold_percent = strtod(argv[12], &endptr);
+  if(Exp_type == 3) threshold_percent = 0;
+  else threshold_percent = 0.2;
 
   cout << "snapshots_number = " << snapshots_number << endl;
 
@@ -255,18 +260,18 @@ int main(int argc,  char **argv)
 
   //Switch Graph Type
 
-  // Graph* g = new Graph();
-  UGraph* g = new UGraph();
+  Graph* g = new Graph();
+  // UGraph* g = new UGraph();
 
-  g->initializeDynamicUGraph(vertex_number);
-  // g->initializeDirectedDynamicGraph(vertex_number);
+  // g->initializeDynamicUGraph(vertex_number);
+  g->initializeDirectedDynamicGraph(vertex_number);
 
   vector<pair<int, int>> edge_vec;
 
 
   // Use the first snapshot to construct, other snapshots to update
-  g->inputDynamicGraph(graph_path.c_str(), edge_vec);
-  // g->inputDirectedDynamicGraph(graph_path.c_str(), edge_vec);
+  // g->inputDynamicGraph(graph_path.c_str(), edge_vec);
+  g->inputDirectedDynamicGraph(graph_path.c_str(), edge_vec);
 
 
 
@@ -1184,7 +1189,6 @@ if(erase_way == 0)
       fnorm_sum_snap[i] += Frobeniusnorm_per_snapshots[j][i];
     Total_ppr_fnorm += fnorm_sum_snap[i];
   }
-
 
   
   double Current_snapshot_fnorm = fnorm_sum_snap[0];

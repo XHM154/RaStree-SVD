@@ -23,6 +23,7 @@ extern "C"
 #include <fstream>
 #include <cstring>
 #include <thread>
+#include <sstream>
 #include <mutex>
 #include "Eigen/Sparse"
 #include "Eigen/Dense"
@@ -53,7 +54,7 @@ extern "C"
 #include <boost/functional/hash.hpp>
 #include <boost/algorithm/string.hpp>
 
-#include "../emhash/hash_table7.hpp"
+// #include "../emhash/hash_table7.hpp"
 
 #include <random>
 
@@ -83,7 +84,7 @@ bool Check_Exist_PPR(string queryname, double rmax)
   std::ifstream file(file_path.c_str());
   if(!file.is_open())
   {
-    cout << "PPR info log fail to be opened!\n";
+    cout << "Exist log fail to be opened!\n";
     file.close();
     return 0;
   }
@@ -93,26 +94,26 @@ bool Check_Exist_PPR(string queryname, double rmax)
 
   if(!file)
   {
-    cout << "No Value in the PPR log!\n";
+    cout << "No Value in the Exist log!\n";
     file.close();
     return 0;
   }
 
   if(fabs(rrr - rmax) < 1e-12)
   {
-    cout << "Same current PPR as the previous one!\n";
+    cout << "Same exist PPR as the previous one!\n";
     file.close();
     return 1;
   }
   else {
-    cout << "Different current PPR as the previous one!\n";
+    cout << "Different exist PPR as the previous one!\n";
     file.close();
     return 0;
   }
 
 }
 
-void Overwrite_PPR_info(string queryname, double rmax)
+void Change_Exist_PPR(string queryname, double rmax)
 {
   string file_path = "PPR_info/" + queryname + ".txt";
   std::ofstream file(file_path.c_str());
@@ -125,10 +126,11 @@ bool maxScoreCmp(const pair<double, pair<int, int>>& a, const pair<double, pair<
     return a.first > b.first;
 }
 
+// bool maxScoreCmpTriplet(const Triplet<double>& a, const Triplet<double>& b){
+//   return a.value() > b.value();
+// }
 
 const static IOFormat CSVFormat(StreamPrecision, DontAlignCols, ", ", "\n");
-
-
 
 void Memory_use_Monitoring_Gen()
 {
@@ -166,7 +168,6 @@ void Output_Memory_Use()
 }
 
 
-
 int main(int argc,  char **argv)
 {
 
@@ -182,15 +183,14 @@ int main(int argc,  char **argv)
 
   string queryname = argv[1];
 
-  string querypath = argv[2];
-
   clock_t start = clock();
-  double alpha = 0.5; 
-  int pass = 12; 
-  double backward_theta = strtod(argv[3], &endptr);
-  int NUMTHREAD = strtod(argv[4], &endptr);
+  double alpha = 0;//strtod(ar[4], &endptr);
+  int pass = 12; //strtod(ar[5], &endptr);
+  double backward_theta = 0;
+  int picture_size = strtod(argv[2], &endptr);
+  int NUMTHREAD = strtod(argv[3], &endptr);
 
-  string Hierarchy_Structure_string = "2_4_8"; 
+  string Hierarchy_Structure_string = "2_4_8"; //ar[8];
   vector<int> Hierarchy_Structure;
   vector<string> Hierarchy_Structure_token;
   boost::split(Hierarchy_Structure_token, Hierarchy_Structure_string, boost::is_any_of("_"));
@@ -202,44 +202,44 @@ int main(int argc,  char **argv)
   for(auto x : Hierarchy_Structure)
     nParts *= x;
 
-  long long int vertex_number = strtod(argv[5], &endptr);
+  
+  int hierarchy_n = 2; //strtod(ar[9], &endptr);
 
-  int Graph_Type = 0;
-  // long long int total_nnz_number = -1;
+  long long int picture_number = strtod(argv[4], &endptr);
 
   cout << "argc : " << argc << endl;
 
-  int d_1_level = 0;
 
   double residuemax = backward_theta; // PPR error up to residuemax
 
   double reservemin = backward_theta; // Retain approximate PPR larger than reservemin
 
   cout << "alpha: " << alpha << ", residuemax: " << residuemax << ", reservemin: " << reservemin <<endl;
-  cout << "nParts: "<< nParts << ", vertex_number: "<<vertex_number<<endl; 
+  cout << "nParts: "<< nParts << ", hierarchy_n: "<< hierarchy_n << ", picture_size: "<<picture_size<<endl; 
 
   fflush(stdout);
+  
+  string LabelPath = "LABEL/" + queryname + ".txt";
 
-  int total_d = atoi(argv[6]) * 2;
-
+  int total_d = strtod(argv[5], &endptr) * 2;
   int d = total_d / 2;
+  // d = 64;
 
   int count_nParts = 0;
 
 
-  string graph_path =  querypath + queryname + ".txt";
   
   int snapshots_number = 0;
 
-  
+
   double Initial_val_percent = 0;
   int erase_way = 0;
-  erase_way = atoi(argv[7]);
+  erase_way = atoi(argv[6]);
   int Exp_type = 0;
   
   if(erase_way > 0)
   {
-    Exp_type = strtod(argv[8], &endptr);
+    Exp_type = strtod(argv[7], &endptr);
     
     if(Exp_type == 3) snapshots_number = 5, Initial_val_percent = 0.5;
     else if(Exp_type == 4) snapshots_number = 10, Initial_val_percent = 0.9;
@@ -251,52 +251,28 @@ int main(int argc,  char **argv)
   
   double threshold_percent = 0;
   if(Exp_type == 3) threshold_percent = 0;
-  else threshold_percent = 0.2;
+    else threshold_percent = 0.15;
 
   cout << "snapshots_number = " << snapshots_number << endl;
 
-  // snapshots_number = 5;
-  // snapshots_number = 10;
-
-  //Switch Graph Type
-
-  // Graph* g = new Graph();
-  UGraph* g = new UGraph();
-
-  g->initializeDynamicUGraph(vertex_number);
-  // g->initializeDirectedDynamicGraph(vertex_number);
-
-  vector<pair<int, int>> edge_vec;
-
-
-  // Use the first snapshot to construct, other snapshots to update
-  g->inputDynamicGraph(graph_path.c_str(), edge_vec);
-  // g->inputDirectedDynamicGraph(graph_path.c_str(), edge_vec);
 
 
 
-
-
-
-
-
-
-  // Construction
   unordered_map<int, vector<long long int>> vec_mapping;
 
   vector<int> vertex_mapping;
 
   vector<int> inner_group_mapping;
 
-  vertex_mapping.resize(vertex_number);
+  vertex_mapping.resize(picture_number);
 
-  inner_group_mapping.resize(vertex_number);
+  inner_group_mapping.resize(picture_number);
 
   long long int common_group_size;
 
-  common_group_size = vertex_number / nParts;
+  common_group_size = picture_number / nParts;
 
-  long long int final_group_size = vertex_number - (nParts - 1) * common_group_size;
+  long long int final_group_size = picture_number - (nParts - 1) * common_group_size;
 
   cout<<"common_group_size = "<<common_group_size<<endl;
 
@@ -314,33 +290,11 @@ int main(int argc,  char **argv)
     for(int j = 0; j < Group_Size[i]; ++j)
       vertex_mapping[Start_Column_List[i] + j] = i;
 
-  // for(int t = 0; t < vertex_number; t++){
-  //   long long int index = t / common_group_size;
-  //   if(index != nParts){
-  //     vertex_mapping[t] = index;
-
-  //   }
-  //   else{
-  //     vertex_mapping[t] = index - 1;
-  //   }
-  // }
 
   for(int i = 0; i < nParts; ++i)
     for(int j = 0; j < Group_Size[i]; ++j)
       vec_mapping[i].push_back(Start_Column_List[i] + j);
 
-  // for(int i = 0; i < nParts; i++){
-  //   if(i != nParts - 1){
-  //     for(long long int j = i * common_group_size; j < (i+1) * common_group_size; j++){
-  //       vec_mapping[i].push_back(j);
-  //     }
-  //   }
-  //   else{
-  //     for(long long int j = 0; j < final_group_size; j++){
-  //       vec_mapping[i].push_back(common_group_size * (nParts - 1) + j);
-  //     }
-  //   }
-  // }
 
   for(int i = 0; i < vec_mapping.size(); i++){
     for(int j = 0; j < vec_mapping[i].size(); j++){
@@ -350,8 +304,11 @@ int main(int argc,  char **argv)
 
 
 
-  int hierarchy_n = 2;
-  d_row_tree_mkl* d_row_tree = new d_row_tree_mkl(vertex_number, d, nParts, hierarchy_n, vec_mapping);
+
+
+
+
+  d_row_tree_mkl* d_row_tree = new d_row_tree_mkl(picture_number, d, nParts, hierarchy_n, vec_mapping);
 
 
 
@@ -359,7 +316,7 @@ int main(int argc,  char **argv)
 
   mat* U_cur_iter;
 
-  U_cur_iter = matrix_new(vertex_number, d);
+  U_cur_iter = matrix_new(picture_size, d);
 
 
 
@@ -367,7 +324,7 @@ int main(int argc,  char **argv)
 
 int level_p = log(nParts) / log(hierarchy_n) + 1;
 
-cout << Hierarchy_Structure.size() << endl;
+
 int TOTAL_NODES = 1, level_node = 1;
 for(auto x : Hierarchy_Structure)
 {
@@ -419,19 +376,21 @@ int largest_level_start_index = total_nodes - nParts;
 
 int d_1 = d / 2 + 1;
 
-
 vector<int> factorization_d_vec(total_nodes, 0);
 
 vector<int> selection_d_vec(total_nodes, 0);
 
 vector<double> F_norm_near_n_matrix(total_nodes, 0);
 
-  for(int i = total_nodes - 1; i >= 1; --i)
-  if(i >= largest_level_start_index){
-    factorization_d_vec[i] = d / number_of_son[father_node[i]] + 1;
-    selection_d_vec[i] = d / number_of_son[father_node[i]] + 1;
-  } else {
-    factorization_d_vec[i] = d / number_of_son[father_node[i]] + 1;
+
+  for(int i = total_nodes - 1; i >= 0; --i)
+  // if(i >= largest_level_start_index)
+  {
+    if(i > 0)
+      factorization_d_vec[i] = (d / number_of_son[father_node[i]]);
+    else factorization_d_vec[0] = d;
+
+    // factorization_d_vec[i] = d;
     
     int tot = 0;
     for(auto x : son_node_list[i])
@@ -442,8 +401,6 @@ vector<double> F_norm_near_n_matrix(total_nodes, 0);
     factorization_d_vec[i] = min(factorization_d_vec[i], selection_d_vec[i]);
   }
 
-  selection_d_vec[0] = factorization_d_vec[0] = d;
-
 
 
 
@@ -452,11 +409,6 @@ vector< vector<double> > low_approx_value_vec(total_nodes);
 for(int i = 0; i < total_nodes; i++){
   low_approx_value_vec[i].resize(factorization_d_vec[i]);
 }
-
-
-
-
-
 
 
 
@@ -475,16 +427,16 @@ vector<int> enqueue_flag_vec(total_nodes, -1);
 //   with $flag\_vec[i] = false$ for each block, to denote
 //   the SVD is still incomplete.
 
-  
+
 
 // //   Set an empty queue $Q$.
 
 Queue Q =
 {
   //.arr = 
-  (MKL_INT*)malloc( sizeof(MKL_INT) * total_nodes ),
+  (MKL_INT*)malloc( sizeof(MKL_INT) * total_nodes + 5),
   //.capacity = 
-  total_nodes,
+  total_nodes + 5,
   //.front =
   0,
   //.rear = 
@@ -492,6 +444,7 @@ Queue Q =
 };
 
 
+  
 
 mat *SS = matrix_new(d, d);
 
@@ -516,9 +469,9 @@ count_top -= hierarchy_n;
 vector<int> nparts_binary_snapshot_vec(nParts, 0);
 
 
-vector<std::map<long long int, double>> all_csr_entries(vertex_number);
+vector<std::map<long long int, double>> all_csr_entries(picture_number);
 
-std::vector<long long int> offsets(vertex_number, 0);
+std::vector<long long int> offsets(picture_number, 0);
 
 
 vector<std::ifstream> ifs_vec(NUMTHREAD);
@@ -526,15 +479,6 @@ vector<std::ifstream> ifs_vec(NUMTHREAD);
 vector<std::ofstream> ofs_vec(NUMTHREAD);
 
 vector<vector<int>> selection_result(total_nodes);
-
-
-
-
-
-
-
-
-
 
 
 
@@ -555,10 +499,6 @@ vector<vector<long long int>> nparts_read_in_io_all_count(nParts, vector<long lo
 vector<string> embedding_matrix_name_vec(d_row_tree->total_nodes);
 
 
-for(int i = 0; i < d_row_tree->total_nodes; i++){
-  embedding_matrix_name_vec[i] = "IO_File/" + queryname + "_embedding_matrix_" + to_string(i) + ".bin";
-}
-
 
 vector<int> random_seed(nParts);
 for(int i = 0; i < nParts; ++i)
@@ -577,9 +517,6 @@ pair<double, pair<double, double>> Preserve_Para;
 Preserve_Para.first = Initial_val;
 Preserve_Para.second.first = LowerBound;
 Preserve_Para.second.second = UpperBound;
-cout << "LowerBound = " << LowerBound << endl;
-cout << "UpperBound = " << UpperBound << endl;
-cout << "Initial_val = " << Initial_val << endl;
 
 vector<vector<double>> Frobeniusnorm_per_snapshots(nParts);
 for(int i = 0; i < nParts; ++i)
@@ -588,26 +525,23 @@ for(int i = 0; i < nParts; ++i)
 vector<double> MAE_vec(nParts, 0.0);
 
 
-double* Frobenius_norm_each_col = new double[vertex_number]{0};
+double* Frobenius_norm_each_col = new double[picture_size]{0};
 double** Frobenius_norm_each_row = new double* [nParts];
-// pair<int, double>** ppr_nnz = new pair<int, double>*[vertex_number]{NULL};
-double** ppr_nnz = new double*[vertex_number]{NULL};
-int** ppr_col = new int*[vertex_number]{NULL};
 
 for(int i = 0; i < nParts; ++i)
   Frobenius_norm_each_row[i] = new double[Group_Size[i]]{0};
 
-double* snapshot_num_columns = new double[vertex_number]{0};
+double* snapshot_num_columns = new double[picture_size]{0};
 double** snapshot_num_rows = new double*[nParts]{NULL};
-  
+mat_coo** cache_matrix = new mat_coo*[nParts]{NULL};
+
 std::mt19937 gen_snapshot(random_seed[0]);
 std::uniform_real_distribution<> dist_snapshot(LowerBound, UpperBound);
 
-for(int i = 0; i < vertex_number; ++i)
+for(int i = 0; i < picture_size; ++i)
 {
   double temp = dist_snapshot(gen_snapshot);
   snapshot_num_columns[i] = temp;
-  
 }
 
 for(int i = 0; i < nParts; ++i)
@@ -622,60 +556,44 @@ double Total_ppr_retain_time = 0;
 double save_emb_time = 0;
 auto hierarchy_Start_time = std::chrono::system_clock::now();
 
-mat_csr** leaf_ppr_matrix = new mat_csr*[total_nodes]();
-
-//Input top non-zeros elements from file with sorted elements
+mat_csr** leaf_sparse_matrix = new mat_csr*[total_nodes]();
 
 
-bool Exist_tag = Check_Exist_PPR(queryname, backward_theta);
-// Exist_tag = 0;
-
-if(Exist_tag)
-{
-  std::string offset_path = "IO_File/"+ queryname + "_offset.bin";
-  cout << "Offset file path as : " << offset_path << endl;
-
-  std::ifstream offset_ifs;
-  offset_ifs.open(offset_path, std::ios::binary);
-  boost::archive::binary_iarchive offset_ia(offset_ifs, boost::archive::no_header | boost::archive::no_tracking);
-  offset_ia >> offsets;
-  offset_ifs.close();
-
+  string store_prefix_path = "image_matrix/" + queryname + "/partition_" + to_string(nParts) + "/";
   for(int i = 0; i < NUMTHREAD; i++){
-    string stored_filename = "IO_File/" + queryname + "_thread_" + to_string(i) + ".bin";
-    ifs_vec[i].open(stored_filename, std::ios::binary);
+    string stored_filename = store_prefix_path + queryname + "_" + to_string(i) + ".txt";
+    ifs_vec[i].open(stored_filename);
   }
 
-} else 
-  for(int i = 0; i < NUMTHREAD; i++){
-    string stored_filename = "IO_File/" + queryname + "_thread_" + to_string(i) + ".bin";
-    // std::fstream fs;
-    ofs_vec[i].open(stored_filename, std::ios::binary);
-    
-  }
+  string nnz_path = store_prefix_path + queryname + "_" + "nnz.txt";
+  ifstream infile_nnz(nnz_path.c_str());
+
+  for(int i = 0; i < nParts; ++i)
+    infile_nnz >> nnz_nparts_vec[i];
+
+  infile_nnz.close();
 
   std::thread mem_rec(Memory_use_Monitoring_Gen);
-  
 
-while(!Stack.empty()){
+while(!Stack.empty())
+{
   
   int index = Stack.top();
   Stack.pop();
 
   cout<<"index = "<<index<<endl;
 
-  string stored_filename = "IO_File/" + queryname + "_embedding_matrix_" + to_string(index) + ".bin";
+  // string stored_filename = "IO_File/" + queryname + "_embedding_matrix_" + to_string(index) + ".bin";
 
-  if(index == 0){
-    stored_filename = "IO_File/" + queryname + "_embedding_matrix_" + to_string(index + 1) + ".bin";
-  }
+  // if(index == 0){
+  //   stored_filename = "IO_File/" + queryname + "_embedding_matrix_" + to_string(index + 1) + ".bin";
+  // }
 
 
   if(index < largest_level_start_index){
 
         double Fnorm_tot = 0;
         int atleast = 0;
-
 
         cout << "Node " << index << " Merge from " << number_of_son[index] << " son nodes." << endl;
         
@@ -684,15 +602,16 @@ while(!Stack.empty()){
         for(auto x : son_node_list[index])
         {
 
-
           if(x < largest_level_start_index)
           {
             low_approx_value_vec[x].resize(factorization_d_vec[x]);
-            d_row_tree->hierarchy_matrix_vec[x] = matrix_new(vertex_number, factorization_d_vec[x]);
+            d_row_tree->hierarchy_matrix_vec[x] = matrix_new(picture_size, factorization_d_vec[x]);
           }
           
           if (x >= largest_level_start_index)
           {
+            factorization_d_vec[x] = min(factorization_d_vec[x], Group_Size[x - largest_level_start_index]);
+
             cout << "FrPCA has already done on bottom node number " << x << endl; 
           }
           else 
@@ -706,20 +625,10 @@ while(!Stack.empty()){
               low_approx_value_vec[x]
             );
 
-            // cout << "NNode " << x << " with fnorm sqr = " << get_matrix_frobenius_norm_square(d_row_tree->hierarchy_matrix_vec[x]) << "\n";
             cout << "Singular Values on a non-leaf node number " << x << " with " << factorization_d_vec[x] << " dimensions as below:" << endl;
             
-            double temp_sum = 0;
-            for(auto x : low_approx_value_vec[x])
-            {
-              cout << x << endl;
-              temp_sum += x * x;
-            }
-            
-  
-            cout << "Truncated SVD done on node " << x << endl;
+            cout << "Do Truncated SVD on node " << x << endl;
 
-          
             matrix_delete(d_row_tree->near_n_matrix_vec[x]);
             d_row_tree->near_n_matrix_vec[x] = NULL;
 
@@ -732,6 +641,8 @@ while(!Stack.empty()){
         for(int x : son_node_list[index])
           top_d += factorization_d_vec[x];
         
+        if(top_d < 0) selection_d_vec[index] += top_d, top_d = 0;
+
         cout<<"top_d = "<<top_d<<endl;
 
 
@@ -740,20 +651,16 @@ while(!Stack.empty()){
 
         take_out_index_OfSons(std::ref(low_approx_value_vec), son_node_list[index], factorization_d_vec, result, number_of_son[index], top_d);
 
-
         cout<<endl;
         for(int i = 0; i < number_of_son[index]; i++){
             cout<<"result["<<i<<"] = "<<result[i]<<endl;
         }
         cout<<endl;
 
-        
-
-
 
         cout<<"dense 2"<<endl;
         
-        d_row_tree->near_n_matrix_vec[index] = matrix_new(d_row_tree->row_dim, selection_d_vec[index]);
+        d_row_tree->near_n_matrix_vec[index] = matrix_new(picture_size, selection_d_vec[index]);
 
         cout<<"dense 3"<<endl;
 
@@ -774,41 +681,20 @@ while(!Stack.empty()){
           for(int tempi = result[i]; tempi < factorization_d_vec[x]; ++tempi)
             F_norm_near_n_matrix[index] += sqr(low_approx_value_vec[x][tempi]);
 
-          cout << x << " dense 6"<<endl;
-
-            // matrix_delete(d_row_tree->hierarchy_matrix_vec[x]);
+          cout << x << " dense 6\n";
 
           cout << current_row <<" after delete"<<endl;
           
-            // d_row_tree->hierarchy_matrix_vec[x] = NULL;
-
         }
 
-cout<<"before dense_sub_svd_function"<<endl;
+        cout<<"before dense_sub_svd_function"<<endl;
 
 
         if(index != 0)
         {
 
-          auto dense_svd_start_time = chrono::system_clock::now();
-
           cout<<"d_row_tree->near_n_matrix_vec[index]->nrows = "<<d_row_tree->near_n_matrix_vec[index]->nrows<<endl;
           cout<<"d_row_tree->near_n_matrix_vec[index]->ncols = "<<d_row_tree->near_n_matrix_vec[index]->ncols<<endl;
-
-          auto dense_end_svd_time = chrono::system_clock::now();
-          auto dense_elapsed_svd_time = chrono::duration_cast<std::chrono::seconds>(dense_end_svd_time - dense_svd_start_time);
-          cout<< "dense_svd cost time = "<<dense_elapsed_svd_time.count() << endl;
-
-          
-
-          auto save_dense_start_time = chrono::system_clock::now();
-          
-
-          auto save_dense_end_time = chrono::system_clock::now();
-          auto save_dense_elapsed_time = chrono::duration<double>(save_dense_end_time - save_dense_start_time);
-          // auto save_dense_elapsed_time = chrono::duration_cast<std::chrono::seconds>(save_dense_end_time - save_dense_start_time);
-          cout<< "save dense_dense cost time = "<<fixed <<setprecision(12) <<save_dense_elapsed_time.count() << endl;
-          save_emb_time += save_dense_elapsed_time.count();
 
           ++finish_son_number[father_node[index]];
           if(finish_son_number[father_node[index]] == number_of_son[father_node[index]])
@@ -842,9 +728,9 @@ cout<<"before dense_sub_svd_function"<<endl;
           for(int iter = 0; iter < factorization_d_vec[0]; ++iter)
           low_approx_value_vec[0][factorization_d_vec[0] - 1 - iter] = matrix_get_element(SS, iter, iter);
 
-          cout << "Singular Values of Node 0 as below: \n";
-          for(auto x : low_approx_value_vec[0])
-            cout << x << endl;
+          // cout << "Singular Values of Node 0 as below: \n";
+          // for(auto x : low_approx_value_vec[0])
+          //   cout << x << endl;
 
 
           auto end_svd_time = chrono::system_clock::now();
@@ -859,26 +745,16 @@ cout<<"before dense_sub_svd_function"<<endl;
 
     }
   
-  else{
-            // NUMTHREAD = 1;
+    else{
+
             cout<<"sparse matrix ?"<<endl;
-            // return;
+
               long long int nnz = 0;
               int order = index - largest_level_start_index;
               vector<long long int> &all_count = nparts_all_count[order];
               
-
-              cout << "ppr computation " << endl;
-              auto ppr_start_time = std::chrono::system_clock::now();
-              vector<thread> threads;
-
-
-              vector<long long int> &write_out_io_all_count = nparts_write_out_io_all_count[order];
-
-
-              long long int start_column = order * common_group_size;
-
-              long long int group_size;
+          
+              int group_size = 0;
 
               if(order == nParts - 1){
                 group_size = final_group_size;
@@ -887,72 +763,17 @@ cout<<"before dense_sub_svd_function"<<endl;
                 group_size = common_group_size;
               }
 
-              cout << "Ready to PushForward\n" << endl;
-
-              ++count_nParts;
-              int random_num = rand() % 7 + 3;
-              double residuemax_ = 2.0 / random_num / count_nParts / pow(1.1, count_nParts);
-              residuemax_ = residuemax;
-              double reservemin_ = residuemax_;
-              
-              cout << "residuemax = reservemin = " << fixed <<setprecision(12) << residuemax_ << "  for index " << index << endl;
-              
-              vector<long long int> &read_in_io_all_count = nparts_read_in_io_all_count[order];
-
-              for (int t = 1; t <= NUMTHREAD; t++){
-                long long int start = start_column + (t-1)*(group_size/NUMTHREAD);
-                long long int end = 0;
-                if (t == NUMTHREAD){
-                  end = start_column + group_size;
-                } else{
-                  end = start_column + t * (group_size / NUMTHREAD);
-                }
-
-                if(Exist_tag == 0)
-                  threads.push_back(thread(AnytimeUndirectedRowbasedMixedPush, t-1, start, end, g, residuemax_, reservemin_,
-                    std::ref(all_count[t - 1]), alpha, std::ref(all_csr_entries), std::ref(ofs_vec[t-1]), 
-                    std::ref(offsets),
-                    std::ref(write_out_io_all_count[t - 1]),
-                    1, ppr_col, ppr_nnz
-                  ));
-                else 
-                  threads.push_back(thread(PPR_retrieve_less_space, start, end, 
-                    std::ref(all_csr_entries),
-                    std::ref(ifs_vec[t - 1]),
-                    std::ref(offsets),
-                    std::ref(read_in_io_all_count[t - 1]),
-                    &all_count[t - 1], ppr_col, ppr_nnz
-                  ));
-
-              }
-
-              for (int t = 0; t < NUMTHREAD ; t++){
-                threads[t].join();
-              }
-              vector<thread>().swap(threads);
 
 
-              auto ppr_end_time = chrono::system_clock::now();
-              auto elapsed_ppr_time = chrono::duration<double>(ppr_end_time - ppr_start_time);
-              cout<< "ppr cost time = "<<fixed<<setprecision(12)<<elapsed_ppr_time.count()<<endl;
-              Total_ppr_time += elapsed_ppr_time.count();
-
-              for(int i = 0; i < NUMTHREAD; i++){
-                // cout<<"before: all_count["<<i<<"] = "<<all_count[i]<<endl;
-                nnz += all_count[i];
-                all_count[i] = nnz - all_count[i];
-              }
-
-              nnz_nparts_vec[order] = nnz;
+              nnz = nnz_nparts_vec[order];
               cout<<"nnz = "<<nnz<<endl;
-            
 
 
-          auto sparse_svd_start_time = chrono::system_clock::now();
+        factorization_d_vec[index] = min(factorization_d_vec[index], Group_Size[order]);
 
-        
         low_approx_value_vec[index].resize(factorization_d_vec[index]);
-        d_row_tree->hierarchy_matrix_vec[index] = matrix_new(vertex_number, factorization_d_vec[index]);
+
+        d_row_tree->hierarchy_matrix_vec[index] = matrix_new(picture_size, factorization_d_vec[index]);
 
         cout<<"factorization_d_vec[index] = "<<factorization_d_vec[index]<<endl;
         cout<<"low_approx_value_vec[index].size() = "<<low_approx_value_vec[index].size()<<endl;
@@ -960,10 +781,13 @@ cout<<"before dense_sub_svd_function"<<endl;
         pair<double, pair<double, double>> Ppara = Preserve_Para;
         Ppara.first = sqrt((Ppara.first - LowerBound) * (UpperBound - LowerBound));
         Ppara.first = Ppara.first + LowerBound;
+        mat_coo ** temp_cache_matrix = NULL;
+        if(cache_matrix != NULL) temp_cache_matrix = &cache_matrix[order];
 
-          sparse_sub_svd_function_take_out_sparse_matrix_preserve_someofelements(
-            &leaf_ppr_matrix[index],
-            vertex_number,
+          sparse_sub_svd_function_take_out_sparse_image_matrix_preserve_someofelements(
+            &leaf_sparse_matrix[index],
+            picture_size,
+            ifs_vec[order],
             all_csr_entries,
             Start_Column_List[order],
             Group_Size[order],
@@ -974,35 +798,27 @@ cout<<"before dense_sub_svd_function"<<endl;
             random_seed[order],
             erase_way, erase_way, 
             Frobeniusnorm_per_snapshots[order],
-            // Frobenius_norm_each_col,
-            ppr_col, ppr_nnz,
+            temp_cache_matrix,
             snapshot_num_columns,
             snapshot_num_rows[order],
-            // Frobenius_norm_each_row[order],
             &Total_ppr_retain_time
           );
 
-        double kk_t = 0;
-        long long cc_t = 0;
         
         cout << "Do FrPCA on a leaf node number " << index << " with " << factorization_d_vec[index] << " dimensions." << endl;
         
-        
+        auto sparse_svd_start_time = chrono::system_clock::now();
+
         sparse_matrix_take_out_singular_values(
             low_approx_value_vec[index], 
             factorization_d_vec[index], pass, d_row_tree->hierarchy_matrix_vec[index],
-            leaf_ppr_matrix[index], vertex_number, leaf_ppr_matrix[index]->nnz
+            leaf_sparse_matrix[index], picture_size, leaf_sparse_matrix[index]->nnz
             );
 
-            // cout << "NNode " << index << " with fnorm sqr = " << get_matrix_frobenius_norm_square(d_row_tree->hierarchy_matrix_vec[index]) << "\n";
-                    
             cout << "Singular values on a leaf node number " << index << " with " << factorization_d_vec[index] << " dimensions." << endl;
-        
-            
-            // cout << "NNode " << x << " with ori fnorm sqr = " << get_matrix_frobenius_norm_square(d_row_tree->near_n_matrix_vec[x]);
-            
 
-        leaf_ppr_matrix[index] = NULL;
+
+        leaf_sparse_matrix[index] = NULL;
         cout << "FrPCA finished on node " << index << endl;
 
     auto sparse_end_svd_time = chrono::system_clock::now();
@@ -1011,17 +827,8 @@ cout<<"before dense_sub_svd_function"<<endl;
         
     auto save_sparse_start_time = chrono::system_clock::now();
 
-
-    auto save_sparse_end_time = chrono::system_clock::now();
-    // auto save_sparse_elapsed_time = chrono::duration_cast<std::chrono::seconds>(save_sparse_end_time - save_sparse_start_time);
-    auto save_sparse_elapsed_time = chrono::duration<double>(save_sparse_end_time - save_sparse_start_time);
-    cout<< "save sparse_dense matrix cost time = " << fixed << setprecision(12) << save_sparse_elapsed_time.count() << endl;
-    save_emb_time += save_sparse_elapsed_time.count();
-
-
         cout<<"Sparse index = "<<index<<endl;
         cout<<"---------------------------"<<endl;
-
 
         
         ++finish_son_number[father_node[index]];
@@ -1034,58 +841,20 @@ cout<<"before dense_sub_svd_function"<<endl;
 
 }
 
-Overwrite_PPR_info(queryname, backward_theta);
 
-if(Exist_tag == 1)
-{
   for(int i = 0; i < NUMTHREAD; i++)
     ifs_vec[i].close();
-} else 
-{
-  for(int i = 0; i < NUMTHREAD; i++){
-    ofs_vec[i].close();
-  }
-}
+
 
 
 auto hierarchy_End_time = std::chrono::system_clock::now();
 
 auto hierarchy_Time_Consume = std::chrono::duration<double>(hierarchy_End_time - hierarchy_Start_time);
 
-  cout << "----------------------------\n";
-  cout << "PPR Computation time = " << fixed << setprecision(12) << Total_ppr_time << endl;
-  cout << "PPR Retain time = " << fixed << setprecision(12) << Total_ppr_retain_time << endl;
-  cout << "Save Embedding time = " << fixed << setprecision(12) << save_emb_time << endl;
-  cout << "Hierarchy consumed time = " << (hierarchy_Time_Consume.count() - Total_ppr_time - Total_ppr_retain_time - save_emb_time) << endl;
+  cout << "--------------------------------------------\n";
+  cout << "Total consumed time = " << (hierarchy_Time_Consume.count() - Total_ppr_time - Total_ppr_retain_time - save_emb_time) << endl;
   
   cout << "\n-------------------------------------------" << endl;
-
-
-
-if(!Exist_tag)
-{
-  string offset_outpath = "IO_File/" + queryname + "_offset" + ".bin";
-  std::ofstream offset_ofs;
-  offset_ofs.open(offset_outpath, std::ios::binary);
-  boost::archive::binary_oarchive offset_oa(offset_ofs,
-                                            boost::archive::no_header | boost::archive::no_tracking);
-  offset_oa << offsets;
-  offset_ofs.close();
-}
-
-  std::string V_result_path = "IO_File/"+ queryname + "_" + to_string(residuemax) + "_" + to_string(d) + "_V.bin";
-  std::ofstream V_ofs(V_result_path, std::ios::binary);
-  V_ofs.write(reinterpret_cast<char*>(U_cur_iter->d), sizeof(double) * U_cur_iter->nrows * (long long)U_cur_iter->ncols);
-  V_ofs.close();
-
-  cout<<"finish hierarchy"<<endl;
-
-  // MatrixXd U_V(vertex_number, total_d);
-
-  MatrixXd U_out(vertex_number, d);
-  MatrixXd V_out(vertex_number, d);
-
-
 
 
   auto static_right_matrix_start_time = chrono::system_clock::now();
@@ -1093,23 +862,14 @@ if(!Exist_tag)
 
 
   for(int i = 0; i < NUMTHREAD; i++){
-    string stored_filename = "IO_File/" + queryname + "_thread_" + to_string(i) + ".bin";
-
-    ifs_vec[i].open(stored_filename, std::ios::binary);
+    string stored_filename = store_prefix_path + queryname + "_" + to_string(i) + ".txt";
+    ifs_vec[i].open(stored_filename);
   }
   
 
     Output_Memory_Use();
 
     mem_rec.detach();
-
-    thread Mem11(Memory_use_Monitoring_Gen);
-
-    std::chrono::seconds duration11(3);
-    std::this_thread::sleep_for(duration11);
-
-    Output_Memory_Use();
-    Mem11.detach();
 
 
     double* leaf_fnorm_square = new double[nParts]();
@@ -1119,15 +879,16 @@ if(!Exist_tag)
     pair<double, pair<double, double>> TPpara = Preserve_Para;
 
     double temp112 = max((UpperBound - LowerBound) * (UpperBound - TPpara.first), 0.0);
-    double temp1 = sqrt(Preserve_Para.first * (UpperBound - LowerBound));
+    double temp1144 = sqrt(Preserve_Para.first * (UpperBound - LowerBound));
 
     if(erase_way > 0)
-      TPpara.first = temp1;
-      
-    mkl_right_matrix_multiplication_V_frobenius_error_with_recover_update(
+      TPpara.first = temp1144;
+
+
+    mkl_right_matrix_multiplication_V_frobenius_error_with_image_recover_update(
       d_row_tree, U_cur_iter,
       MAE_vec,
-      vertex_number, d, SS, NUMTHREAD,
+      picture_number, picture_size, d, SS, NUMTHREAD,
       largest_level_start_index, 
       Group_Size, 
       all_csr_entries,
@@ -1136,7 +897,7 @@ if(!Exist_tag)
       nparts_all_count,
       nnz_nparts_vec,
       nparts_read_in_io_all_count,
-      random_seed, TPpara, ppr_col, ppr_nnz, erase_way,
+      random_seed, TPpara, cache_matrix, erase_way,
       snapshot_num_columns,
       snapshot_num_rows,
       leaf_fnorm_square,
@@ -1152,7 +913,8 @@ if(erase_way == 0)
 
   auto static_right_matrix_end_time = chrono::system_clock::now();
   auto static_elapsed_right_matrix_time = chrono::duration_cast<std::chrono::seconds>(static_right_matrix_end_time - static_right_matrix_start_time);
-  // cout << "Right matrix consumed time = "<< static_elapsed_right_matrix_time.count() << endl;
+  cout << "Right matrix consumed time = "<< static_elapsed_right_matrix_time.count() << endl;
+
 
 
   cout << "Preparation for Dynamic Part." << endl;
@@ -1162,8 +924,11 @@ if(erase_way == 0)
   double total_L11_norm = 0;
 
   for(int i = 0 ; i < nParts; ++i)
+  {
     total_leaf_fnorm += leaf_fnorm_square[i],
     total_leaf_nnz += leaf_nnz[i];
+  }
+
 
 
 
@@ -1172,8 +937,10 @@ if(erase_way == 0)
     ifs_vec[i].close();
   }
 
+
+
   mat* U_original = U_cur_iter;
-  U_cur_iter = matrix_new(vertex_number, d);
+  U_cur_iter = matrix_new(picture_size, d);
   matrix_copy(U_cur_iter, U_original);
 
 
@@ -1190,17 +957,16 @@ if(erase_way == 0)
     Total_ppr_fnorm += fnorm_sum_snap[i];
   }
 
+
   
   double Current_snapshot_fnorm = fnorm_sum_snap[0];
-
-  double Amortized_update_time = 0;
 
   for(int iter = 1; iter <= snapshots_number; iter++)
   {
     pair<double, pair<double, double>> Ppara = Preserve_Para;
     
     double temp11 = max((UpperBound - LowerBound) * (UpperBound - iter - Ppara.first), 0.0);
-
+    
     if(erase_way > 0)
       // Ppara.first = UpperBound - sqrt(temp11);
       Ppara.first = sqrt((Ppara.first + iter) * (UpperBound - LowerBound));
@@ -1223,19 +989,15 @@ if(erase_way == 0)
 
 
     for(int i = 0; i < NUMTHREAD; i++){
-      string stored_filename = "IO_File/" + queryname + "_thread_" + to_string(i) + ".bin";
-
-      ifs_vec[i].open(stored_filename, std::ios::binary);
+      string stored_filename = store_prefix_path + queryname + "_" + to_string(i) + ".txt";
+      ifs_vec[i].open(stored_filename);
     }
 
     cout<<"Current Update Snapshot Number = "<<iter<<endl;
 
     double ppr_tot_time = 0;
 
-    edge_vec.clear();
     malloc_trim(0);
-    
-    cout<<"edge_vec.size() = "<<edge_vec.size()<<endl;
 
 
     vector<thread> refresh_threads;
@@ -1282,7 +1044,7 @@ if(erase_way == 0)
         for(int i = 0; i < nParts; ++i)
         Update_Queue.push(i + largest_level_start_index);
       else
-      while(total_update_fnorm > sqr(threshold_percent) * Address_snapshot_fnorm + 1e-8)
+      while(total_update_fnorm > sqr(threshold_percent) * Address_snapshot_fnorm)
       {
         Update_Queue.push(largest_level_start_index + update_order[update_number].second);
         total_update_fnorm -= update_order[update_number].first;
@@ -1290,26 +1052,38 @@ if(erase_way == 0)
         ++update_number;
         cout << "update number = " << update_number << " 's fnorm = " << update_order[update_number].first << endl;
       }
-    } 
-
+    } else {
+      for(int i = 0; i < nParts; ++i)
+      Update_Queue.push(i + largest_level_start_index);
+      // if(iter > snapshots_number + 3) pass++;
+    }
 
 
     cout << " Number of Leaf vertices in Updata Queue = " << Update_Queue.size() << endl;
     
     double Error_Before_Update = 0;
-    // if(1 == 0)
-    mkl_right_matrix_multiplication_V_frobenius_error_with_recover_update(
-          d_row_tree, U_original, MAE_vec, vertex_number, d, SS, NUMTHREAD,
+
+    mkl_right_matrix_multiplication_V_frobenius_error_with_image_recover_update(
+          d_row_tree, U_original, MAE_vec, picture_number, picture_size, d, SS, NUMTHREAD,
           largest_level_start_index, Group_Size, 
           all_csr_entries, offsets, ifs_vec, nparts_all_count, nnz_nparts_vec,
-          nparts_read_in_io_all_count, random_seed, Ppara, ppr_col, ppr_nnz, erase_way,
+          nparts_read_in_io_all_count, random_seed, Ppara, cache_matrix, erase_way,
+          // Frobenius_norm_each_row,
+          // Frobenius_norm_each_col,
           snapshot_num_columns,
           snapshot_num_rows,
           leaf_fnorm_square, leaf_nnz, L_1_1_norm,
           &Error_Before_Update
         );
 
+    for(int i = 0; i < NUMTHREAD; i++){
+      ifs_vec[i].close();
+    }
 
+    for(int i = 0; i < NUMTHREAD; i++){
+      string stored_filename = store_prefix_path + queryname + "_" + to_string(i) + ".txt";
+      ifs_vec[i].open(stored_filename);
+    }
 
     std::thread mem_rec_iter(Memory_use_Monitoring_Gen);
 
@@ -1327,7 +1101,7 @@ if(erase_way == 0)
 
       if(index >= largest_level_start_index)
       {
-        auto ppr_refresh_time = std::chrono::system_clock::now();
+        auto image_refresh_time = std::chrono::system_clock::now();
         top_influenced_index = index - largest_level_start_index;
         Count_Leaf_nnz += leaf_nnz[top_influenced_index];
         Count_Leaf_Num++;
@@ -1335,7 +1109,7 @@ if(erase_way == 0)
         cout << "Current Leaf Node Number : " << top_influenced_index << endl;
         long long int start_column = Start_Column_List[top_influenced_index];
 
-        auto ppr_start_time = chrono::system_clock::now();
+        auto image_start_time = chrono::system_clock::now();
 
         long long int group_size = Group_Size[top_influenced_index];
 
@@ -1348,37 +1122,17 @@ if(erase_way == 0)
         vector<long long int> &write_out_io_all_count = nparts_write_out_io_all_count[top_influenced_index];
         vector<long long int> &read_in_io_all_count = nparts_read_in_io_all_count[top_influenced_index];
 
-        for (int t = 1; t <= NUMTHREAD; t++){
-          long long int start = start_column + (t-1)*(group_size/NUMTHREAD);
-          long long int end = 0;
-          if (t == NUMTHREAD){
-            end = start_column + group_size;
-          } 
-          else{
-            end = start_column + t * (group_size / NUMTHREAD);
-          }
-
-          long long ttt = 0;
-          refresh_threads.push_back(thread(PPR_retrieve_less_space, start, end, 
-          std::ref(all_csr_entries),
-          std::ref(ifs_vec[t - 1]),
-          std::ref(offsets),
-          std::ref(read_in_io_all_count[t - 1]),
-          &ttt, ppr_col, ppr_nnz
-          ));
-
-        }
-        
-        for (int t = 0; t < NUMTHREAD ; t++){
-          refresh_threads[t].join();
-        }
         vector<thread>().swap(refresh_threads);
         
         long long nnz = nnz_nparts_vec[top_influenced_index];
 
-        sparse_sub_svd_function_take_out_sparse_matrix_preserve_someofelements(
-          &leaf_ppr_matrix[index],
-          vertex_number,
+        mat_coo ** temp_cache_matrix = NULL;
+        if(cache_matrix != NULL) temp_cache_matrix = &cache_matrix[top_influenced_index];
+
+        sparse_sub_svd_function_take_out_sparse_image_matrix_preserve_someofelements(
+          &leaf_sparse_matrix[index],
+          picture_size,
+          ifs_vec[top_influenced_index],
           all_csr_entries,
           Start_Column_List[top_influenced_index],
           Group_Size[top_influenced_index],
@@ -1388,7 +1142,7 @@ if(erase_way == 0)
           Ppara,
           random_seed[top_influenced_index],
           0, erase_way, Frobeniusnorm_per_snapshots[top_influenced_index],
-          ppr_col, ppr_nnz,
+          temp_cache_matrix,
           snapshot_num_columns,
           snapshot_num_rows[top_influenced_index]
         );
@@ -1402,9 +1156,9 @@ if(erase_way == 0)
 
         cout << "nnz = " << nnz << endl;
 
-        auto finish_ppr_refresh_time = chrono::system_clock::now();
-        auto elapsed_ppr_refresh_time = chrono::duration<double>(finish_ppr_refresh_time - ppr_refresh_time);
-        cout<< "Iter = "<<iter << ", total ppr time: "<< elapsed_ppr_refresh_time.count() << endl;
+        auto finish_image_refresh_time = chrono::system_clock::now();
+        auto elapsed_image_refresh_time = chrono::duration<double>(finish_image_refresh_time - image_refresh_time);
+        cout<< "Iter = "<<iter << ", total ppr time: "<< elapsed_image_refresh_time.count() << endl;
 
 
         int largest_level_start_index = d_row_tree->largest_level_start_index;
@@ -1425,11 +1179,29 @@ if(erase_way == 0)
         } 
           else cout << "singular right matrix already deleted.\n";
 
+        // double kk_t = 0;
+        // long long cc_t = 0;
+        // for(long long x = 0; x < leaf_sparse_matrix[index]->nnz; ++x)
+        //   kk_t += leaf_sparse_matrix[index]->values[x],
+        //   cc_t += leaf_sparse_matrix[index]->cols[x];
+  
+        // cout << "index == " << index << " kk_t = " << kk_t << " cc_t = " << cc_t << "\n"; 
+        
 
-        d_row_tree->hierarchy_matrix_vec[index] = matrix_new(vertex_number, factorization_d_vec[index]);
+        // mat_csr* combine_sparse_matrix = 
+        //   merge_sparse_matrix(leaf_sparse_matrix[index], update_matrix[top_influenced_index]);
 
-        auto ppr_end_time = chrono::system_clock::now();
-        ppr_tot_time += chrono::duration<double>(ppr_end_time - ppr_start_time).count();
+        // csr_matrix_delete(leaf_sparse_matrix[index]);
+        // leaf_sparse_matrix[index] = combine_sparse_matrix;
+
+        // cout << "min_p = " << min_p << " || max_p = " << max_p << endl;
+
+        // updated_matrix[top_influenced_index] = update_matrix[top_influenced_index];
+
+        d_row_tree->hierarchy_matrix_vec[index] = matrix_new(picture_size, factorization_d_vec[index]);
+
+        auto image_end_time = chrono::system_clock::now();
+        ppr_tot_time += chrono::duration<double>(image_end_time - image_start_time).count();
         
         auto _sstart_point = chrono::system_clock::now();
 
@@ -1437,7 +1209,7 @@ if(erase_way == 0)
           sparse_matrix_take_out_singular_values(
               low_approx_value_vec[index], 
               factorization_d_vec[index], pass, d_row_tree->hierarchy_matrix_vec[index],
-              leaf_ppr_matrix[index], vertex_number, leaf_ppr_matrix[index]->nnz
+              leaf_sparse_matrix[index], picture_size, leaf_sparse_matrix[index]->nnz
           );
 
         auto _eend_point = chrono::system_clock::now();
@@ -1446,15 +1218,13 @@ if(erase_way == 0)
         cout << "Frpca Computation Time = " << _ddduration.count() << endl;
 
 
-          leaf_ppr_matrix[index] = NULL;
+          leaf_sparse_matrix[index] = NULL;
           cout << "FrPCA finished on node " << index << endl;
 
-
-          // cout<<"Sparse index = " << index << endl;
-          cout<<"d_row_tree->hierarchy_matrix_vec[index]->d[0] = "<<d_row_tree->hierarchy_matrix_vec[index]->d[0]<<endl;
-          cout<<"d_row_tree->hierarchy_matrix_vec[index]->nrows = "<<d_row_tree->hierarchy_matrix_vec[index]->nrows<<endl;
-          cout<<"d_row_tree->hierarchy_matrix_vec[index]->ncols = "<<d_row_tree->hierarchy_matrix_vec[index]->ncols<<endl;
-          cout<<"---------------------------"<<endl;
+          // cout<<"d_row_tree->hierarchy_matrix_vec[index]->d[0] = "<<d_row_tree->hierarchy_matrix_vec[index]->d[0]<<endl;
+          // cout<<"d_row_tree->hierarchy_matrix_vec[index]->nrows = "<<d_row_tree->hierarchy_matrix_vec[index]->nrows<<endl;
+          // cout<<"d_row_tree->hierarchy_matrix_vec[index]->ncols = "<<d_row_tree->hierarchy_matrix_vec[index]->ncols<<endl;
+          // cout<<"---------------------------"<<endl;
 
 
           cout<<"finish dynamic sparse"<<endl;
@@ -1487,15 +1257,16 @@ if(erase_way == 0)
 
         // take_out_index_OfSons(std::ref(low_approx_value_vec), son_node_list[index], factorization_d_vec, result, number_of_son[index], top_d);
 
-        for(int i = 0; i < number_of_son[index]; i++){
-            cout<<"result["<<i<<"] = "<<result[i]<<endl;
+        for(int i = 0; i < number_of_son[index]; i++)
+        {
+            cout << "result[" << i << "] = " << result[i] <<endl;
         }
-        cout<<endl;
+        cout << endl;
 
         
-        d_row_tree->near_n_matrix_vec[index] = matrix_new(d_row_tree->row_dim, selection_d_vec[index]);
+        d_row_tree->near_n_matrix_vec[index] = matrix_new(picture_size, selection_d_vec[index]);
 
-        cout<<"dense 3"<<endl;
+        cout << "dense 3" << endl;
 
         F_norm_near_n_matrix[index] = 0;
         int current_row = 0;
@@ -1586,17 +1357,30 @@ if(erase_way == 0)
     auto iter_end_time = chrono::system_clock::now();
     auto elapsed_iter_time = chrono::duration<double>(iter_end_time - iter_start_time);
 
+  
+    cout<<"nparts_binary_snapshot_vec[top_influenced_index] = "<<nparts_binary_snapshot_vec[top_influenced_index]<<endl;
+
+    
 
     Output_Memory_Use();
     mem_rec_iter.detach();
 
-    double Error_After_Update = 0;
+    for(int i = 0; i < NUMTHREAD; i++){
+      ifs_vec[i].close();
+    }
 
-      mkl_right_matrix_multiplication_V_frobenius_error_with_recover_update(
-        d_row_tree, U_cur_iter, MAE_vec, vertex_number, d, SS, NUMTHREAD,
+    for(int i = 0; i < NUMTHREAD; i++){
+      string stored_filename = store_prefix_path + queryname + "_" + to_string(i) + ".txt";
+      ifs_vec[i].open(stored_filename);
+    }
+
+    double Error_After_Update = 0;
+    
+      mkl_right_matrix_multiplication_V_frobenius_error_with_image_recover_update(
+        d_row_tree, U_cur_iter, MAE_vec, picture_number, picture_size, d, SS, NUMTHREAD,
         largest_level_start_index, Group_Size, 
         all_csr_entries, offsets, ifs_vec, nparts_all_count, nnz_nparts_vec,
-        nparts_read_in_io_all_count, random_seed, Ppara, ppr_col, ppr_nnz, erase_way,
+        nparts_read_in_io_all_count, random_seed, Ppara, cache_matrix, erase_way,
         snapshot_num_columns,
         snapshot_num_rows,
         leaf_fnorm_square, leaf_nnz, L_1_1_norm,
@@ -1613,10 +1397,7 @@ if(erase_way == 0)
     cout << "Count for all NNZ = " << total_leaf_nnz << endl;
 
     
-    cout << fixed << setprecision(12) << "PPR time at snapshot " << iter << " = " << ppr_tot_time << endl;
-    cout << "Iter = "<<iter<<", time = "<< elapsed_iter_time.count() - ppr_tot_time << endl; 
-
-    Amortized_update_time += (elapsed_iter_time.count() - ppr_tot_time);
+    cout << "Iter = " << iter << ", update time = " << elapsed_iter_time.count() - ppr_tot_time << endl; 
 
 
     for(int i = 0; i < NUMTHREAD; i++){
@@ -1629,16 +1410,14 @@ if(erase_way == 0)
 
 }
 
-  Amortized_update_time /= snapshots_number;
-
-  cout << "Amortized update time = " << Amortized_update_time << '\n';
-
     for(int i = 0; i < NUMTHREAD; i++){
-      string stored_filename = "IO_File/" + queryname + "_thread_" + to_string(i) + ".bin";
-
-      ifs_vec[i].open(stored_filename, std::ios::binary);
+      string stored_filename = store_prefix_path + queryname + "_" + to_string(i) + ".txt";
+      ifs_vec[i].open(stored_filename);
     }
 
+    double Error_original_U = 0;
+    pair<double, pair<double, double>> Ppara = Preserve_Para;
+    Ppara.first += snapshots_number;
 
 
     for(int i = 0; i < NUMTHREAD; i++){
@@ -1647,7 +1426,6 @@ if(erase_way == 0)
 
 
   auto end_write_time = chrono::system_clock::now();
-
   auto elapsed_time = chrono::duration_cast<std::chrono::seconds>(end_write_time - start_time);
   cout << "total embedding time: "<< elapsed_time.count() << endl;
 
